@@ -5,4 +5,6 @@
 CHINESE = 1
 
 # +-- Add your own sources here, if any --+
-ADD_SOURCES =
+ADD_SOURCES = alphabeta/cpp/alphabeta.cpp \
+			  tt/cpp/transposition_table.cpp \
+			  tt/cpp/zobrist.cpp
