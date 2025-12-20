@@ -41,8 +41,8 @@ public:
 
     static int material_table[MAT_SIZE][MAT_SIZE]; 
     static bool table_loaded;
+    void update_unrevealed(const Position &pos);
 private:
-    std::vector<std::pair<Piece, int>> get_unrevealed(const Position &pos) const;
     long double star0(const Move &mv, const Position &pos, long double alpha, long double beta, int depth, uint64_t key);
     long double f3(Position &pos, long double alpha, long double beta, int depth, uint64_t key);
     int pos_score(const Position &pos, Color cur_color) const;
@@ -56,6 +56,9 @@ private:
 
     void load_material_table();
     int get_material_index(const Position &pos, Color cur_color) const;
+
+    const int init_counts[7] = {1, 2, 2, 2, 2, 2, 5};
+    int unrevealed_count[2][7];// need track both!
 };
 
 #endif

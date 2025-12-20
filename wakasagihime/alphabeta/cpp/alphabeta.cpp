@@ -29,39 +29,36 @@ void AlphaBetaEngine::load_material_table(){
     std::cout << "Material table loaded.\n";
 }
 
-std::vector<std::pair<Piece, int>> AlphaBetaEngine::get_unrevealed(const Position &pos) const{
-    static const int init_counts[] = {1, 2, 2, 2, 2, 2, 5};
-
-    std::vector<std::pair<Piece, int>> unrevealed;
-    for(Color c : {Red, Black}){
-        for(PieceType pt = General; pt <= Soldier; pt = PieceType(pt + 1)){
-            int total_count = init_counts[pt];
-            int revealed_count = pos.count(c, pt);
-            int unrevealed_count = total_count - revealed_count;
-            if(unrevealed_count > 0){
-                unrevealed.push_back(std::make_pair(Piece(c, pt), unrevealed_count));
-            }
+void AlphaBetaEngine::update_unrevealed(const Position &pos){
+    for(int c = 0; c < SIDE_NB; c++){
+        for(int pt = General; pt <= Soldier; pt++){
+            int revealed = pos.count(Color(c), PieceType(pt));
+            unrevealed_count[c][pt] = std::min(init_counts[pt] - revealed, unrevealed_count[c][pt]);
         }
     }
-    return unrevealed;
 }
 
 long double AlphaBetaEngine::star0(const Move &mv, const Position &pos, long double alpha, long double beta, int depth, uint64_t key){
     (void)alpha;
     (void)beta;
     long double vsum = 0;
-    // get all possible flip result
-    std::vector<std::pair<Piece, int>> unrevealed = get_unrevealed(pos);
     int D = 0;// total number of unrevealed pieces
-    for(const auto& [p, count] : unrevealed){
-        Position copy(pos);
-        copy.clear_collection();
-        Piece force_set[1] = {p};
-        copy.add_collection(force_set, 1);
-        copy.do_move(mv);
-        uint64_t child_key = zobrist_.update_zobrist_hash(key, mv, pos, p);
-        vsum += count * -f3(copy, -INF, INF, depth, child_key);
-        D += count;
+    for(Color c: {Red, Black}){
+        for(int pt = General; pt <= Soldier; pt++){
+            if(unrevealed_count[c][pt] == 0) continue;
+
+            Piece p(c, PieceType(pt));
+            int count = unrevealed_count[c][pt];
+
+            Position copy(pos);
+            copy.clear_collection();
+            Piece force_set[1] = {p};
+            copy.add_collection(force_set, 1);
+            copy.do_move(mv);
+            uint64_t child_key = zobrist_.update_zobrist_hash(key, mv, pos, p);
+            vsum += count * -f3(copy, -INF, INF, depth, child_key);
+            D += count;
+        }
     }
 
     if(D == 0) return 0; // should not happen
@@ -160,6 +157,18 @@ Move AlphaBetaEngine::search(Position &pos){
         // Should not happen in valid game state, but safety check
         return Move();
     }
+
+    // handle new game start
+    if(pos.count(FACE_UP) == 0){
+        // restore unrevealed pieces
+        for(int pt = General; pt <= Soldier; pt++){
+            unrevealed_count[0][pt] = init_counts[pt];
+            unrevealed_count[1][pt] = init_counts[pt];
+        }
+        return Move(SQ_D2, SQ_D2); // flip center piece
+    }
+    
+    update_unrevealed(pos);// may be eaten by opponent in last turn
 
     int best_move = 0;
     int best_move_this_iter = 0;

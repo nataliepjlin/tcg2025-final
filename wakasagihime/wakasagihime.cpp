@@ -37,13 +37,18 @@ int main()
 {
     std::string line;
     AlphaBetaEngine engine = AlphaBetaEngine();
+    Move prev_move;
     while (std::getline(std::cin, line)) {
         Position pos(line);
         if(pos.time_left() < -1.0){
             // not my turn
+            if(prev_move.type() == Flipping){
+                engine.update_unrevealed(pos);
+            }
             continue;
         }
         Move best_move = engine.search(pos);
         info << best_move;
+        prev_move = best_move;
     }
 }
