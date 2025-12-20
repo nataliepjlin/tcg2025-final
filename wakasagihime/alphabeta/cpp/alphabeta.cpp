@@ -38,14 +38,14 @@ void AlphaBetaEngine::update_unrevealed(const Position &pos){
     }
 }
 
-long double AlphaBetaEngine::star0(const Move &mv, const Position &pos, long double alpha, long double beta, int depth, uint64_t key){
+int AlphaBetaEngine::star0(const Move &mv, const Position &pos, int alpha, int beta, int depth, uint64_t key){
     (void)alpha;
     (void)beta;
-    long double vsum = 0;
+    int vsum = 0;
     int D = 0;// total number of unrevealed pieces
     for(Color c: {Red, Black}){
         for(int pt = General; pt <= Soldier; pt++){
-            if(unrevealed_count[c][pt] == 0) continue;
+            if(unrevealed_count[c][pt] <= 0) continue;
 
             Piece p(c, PieceType(pt));
             int count = unrevealed_count[c][pt];
@@ -56,7 +56,9 @@ long double AlphaBetaEngine::star0(const Move &mv, const Position &pos, long dou
             copy.add_collection(force_set, 1);
             copy.do_move(mv);
             uint64_t child_key = zobrist_.update_zobrist_hash(key, mv, pos, p);
+            unrevealed_count[c][pt]--;// temporarily decrease count
             vsum += count * -f3(copy, -INF, INF, depth, child_key);
+            unrevealed_count[c][pt]++;// restore count
             D += count;
         }
     }
@@ -66,7 +68,8 @@ long double AlphaBetaEngine::star0(const Move &mv, const Position &pos, long dou
     return vsum / D;
 }
 
-long double AlphaBetaEngine::f3(Position &pos, long double alpha, long double beta, int depth, uint64_t key){
+
+int AlphaBetaEngine::f3(Position &pos, int alpha, int beta, int depth, uint64_t key){
     // Check time every 256 nodes for more frequent timeout checks
     if ((++node_count_ & 255) == 0){
         auto now = std::chrono::steady_clock::now();
@@ -78,7 +81,7 @@ long double AlphaBetaEngine::f3(Position &pos, long double alpha, long double be
     if(time_out_) return 0;
     
     Move tt_move = Move();
-    long double tt_value;
+    int tt_value;
     if(tt_.probe(key, alpha, beta, depth, tt_value, tt_move)){
         return tt_value;
     }
@@ -86,8 +89,6 @@ long double AlphaBetaEngine::f3(Position &pos, long double alpha, long double be
     // Depth limit check
     if(pos.winner() != NO_COLOR){
         int diff = pos_score(pos, pos.due_up());
-        // FIX: Add depth bonus. Higher depth value = shallower in tree (closer to root) = faster win.
-        // Assuming depth counts DOWN from Max to 0.
         if(pos.winner() == pos.due_up())
             return AB_WIN_SCORE + depth + diff;
         else if(pos.winner() == Mystery)
@@ -102,19 +103,27 @@ long double AlphaBetaEngine::f3(Position &pos, long double alpha, long double be
     }
 
     MoveList<> moves(pos);
-    if(tt_move != Move()){
-        // Move tt_move to front
-        auto it = std::find(moves.begin(), moves.end(), tt_move);
-        if(it != moves.end()){
-            std::iter_swap(moves.begin(), it);
-        }
-    }
+    std::sort(moves.begin(), moves.end(), [&](Move a, Move b){
+        if(a == tt_move) return true;
+        if(b == tt_move) return false;
+        
+        PieceType afrom = pos.peek_piece_at(a.from()).type;
+        PieceType ato = pos.peek_piece_at(a.to()).type;
+        int score_a = a.from() == a.to() ? flip_score :
+        ato == NO_PIECE ? yummy_table[afrom][7] : yummy_table[afrom][ato];
+
+        PieceType bfrom = pos.peek_piece_at(b.from()).type;
+        PieceType bto = pos.peek_piece_at(b.to()).type;
+        int score_b = b.from() == b.to() ? flip_score :
+        bto == NO_PIECE ? yummy_table[bfrom][7] : yummy_table[bfrom][bto];
+        return score_a > score_b;
+    });
     Move best_move_this_node = moves[0];
 
-    long double mx = -INF;
+    int mx = -INF;
 
     for(Move mv : moves){        
-        long double t;
+        int t;
         if(mv.type() == Flipping){
             t = star0(mv, pos, -beta, -std::max(alpha, mx), depth - 1, key);
         }
@@ -158,13 +167,27 @@ Move AlphaBetaEngine::search(Position &pos){
         return Move();
     }
 
+    std::sort(moves.begin(), moves.end(), [&](Move a, Move b){
+        PieceType afrom = pos.peek_piece_at(a.from()).type;
+        PieceType ato = pos.peek_piece_at(a.to()).type;
+        int score_a = a.from() == a.to() ? flip_score :
+        ato == NO_PIECE ? yummy_table[afrom][7] : yummy_table[afrom][ato];
+
+        PieceType bfrom = pos.peek_piece_at(b.from()).type;
+        PieceType bto = pos.peek_piece_at(b.to()).type;
+        int score_b = b.from() == b.to() ? flip_score :
+        bto == NO_PIECE ? yummy_table[bfrom][7] : yummy_table[bfrom][bto];
+        return score_a > score_b;
+    });
+
     // handle new game start
-    if(pos.count(FACE_UP) == 0){
+    if(pos.count(Hidden) == SQUARE_NB){
         // restore unrevealed pieces
         for(int pt = General; pt <= Soldier; pt++){
             unrevealed_count[0][pt] = init_counts[pt];
             unrevealed_count[1][pt] = init_counts[pt];
         }
+        prev_depth_ = 1;
         return Move(SQ_D2, SQ_D2); // flip center piece
     }
     
@@ -176,17 +199,17 @@ Move AlphaBetaEngine::search(Position &pos){
 
     // 3. Iterative Deepening Loop
     // Start at depth 1, increase until time runs out
-    for (int depth = 1; depth <= 50; depth++){
+    for (int depth = prev_depth_; depth <= 50; depth++){
 
-        long double mx = -INF;
-        long double alpha = -INF;
-        long double beta = INF;
+        int mx = -INF;
+        int alpha = -INF;
+        int beta = INF;
 
         // Search root children manually to track best_move
         for(int i = 0; i < moves.size(); i++){
 
             // Call f3 with depth - 1
-            long double t;
+            int t;
             if(moves[i].type() == Flipping){
                 t = star0(moves[i], pos, -beta, -std::max(alpha, mx), depth - 1, key);
             }
