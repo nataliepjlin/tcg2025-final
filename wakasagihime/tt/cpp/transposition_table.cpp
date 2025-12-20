@@ -1,7 +1,7 @@
 #include "../h/transposition_table.h"
 #include <algorithm>
 
-bool TranspositionTable::probe(uint64_t hash, long double alpha, long double beta, const int depth, long double &ret_score, Move &tt_move){
+bool TranspositionTable::probe(uint64_t hash, long double &alpha, long double &beta, const int depth, long double &ret_score, Move &tt_move){
     size_t index = hash & TT_MASK; // hash % TT_SIZE
     TT_Entry &entry = table[index];
     if(entry.hash == hash){

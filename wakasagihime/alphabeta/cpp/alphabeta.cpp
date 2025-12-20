@@ -119,7 +119,7 @@ long double AlphaBetaEngine::f3(Position &pos, long double alpha, long double be
     for(Move mv : moves){        
         long double t;
         if(mv.type() == Flipping){
-            t = star0(mv, pos, -beta, -std::max(alpha, mx), depth - 2, key);
+            t = star0(mv, pos, -beta, -std::max(alpha, mx), depth - 1, key);
         }
         else{
             Position copy(pos);
@@ -155,11 +155,6 @@ Move AlphaBetaEngine::search(Position &pos){
     time_out_ = false;
     node_count_ = 0;
 
-    if(pos.pieces(FACE_UP) == 0){ // Opening move
-        // Flip center
-        return Move(SQ_D2, SQ_D2);
-    }
-
     MoveList<> moves(pos);
     if(moves.size() == 0) {
         // Should not happen in valid game state, but safety check
@@ -172,8 +167,7 @@ Move AlphaBetaEngine::search(Position &pos){
 
     // 3. Iterative Deepening Loop
     // Start at depth 1, increase until time runs out
-    int depth = 1;
-    for (; depth <= 50; depth += 2){
+    for (int depth = 1; depth <= 50; depth++){
 
         long double mx = -INF;
         long double alpha = -INF;
@@ -185,7 +179,7 @@ Move AlphaBetaEngine::search(Position &pos){
             // Call f3 with depth - 1
             long double t;
             if(moves[i].type() == Flipping){
-                t = star0(moves[i], pos, -beta, -std::max(alpha, mx), depth - 2, key);
+                t = star0(moves[i], pos, -beta, -std::max(alpha, mx), depth - 1, key);
             }
             else{
                 Position copy(pos);
@@ -203,8 +197,6 @@ Move AlphaBetaEngine::search(Position &pos){
         }
 
         if (time_out_){
-            // If we timed out during Depth K, the results are incomplete/garbage.
-            // We MUST discard Depth K and return the result from Depth K-1.
             break;
         }
         else{
@@ -214,7 +206,7 @@ Move AlphaBetaEngine::search(Position &pos){
                 break;
         }
     }
-    debug << "AlphaBeta: Search completed with depth = " << depth - 2 << ", " << node_count_ << " nodes evaluated.\n";
+
     return moves[best_move];
 }
 
@@ -229,20 +221,47 @@ int AlphaBetaEngine::get_material_index(const Position &pos, Color c) const{
 }
 
 int AlphaBetaEngine::pos_score(const Position &pos, const Color cur_color) const{
+    int score = 0;
     Color opp_color = Color(cur_color ^ 1);
-    int my_index = get_material_index(pos, cur_color);
-    int opp_index = get_material_index(pos, opp_color);
-    int my_raw_score = material_table[my_index][opp_index];
-    int opp_raw_score = material_table[opp_index][my_index];
+    
+    for(Square sq = SQ_A1; sq < SQUARE_NB; sq = Square(sq + 1)){
+        Piece p = pos.peek_piece_at(sq);
+        if(p.side == cur_color){
+            score += Piece_Value[p.type];
+        }
+        else if(p.side == opp_color){
+            score -= Piece_Value[p.type];
+        }
+    }
 
-    int total_score = my_raw_score + opp_raw_score;
-    if(total_score == 0) return 0; // avoid division by zero
+    Board my_board = pos.pieces(cur_color);
+    Board opp_board = pos.pieces(opp_color);
+    if(pos.count(cur_color) && pos.count(opp_color)){
+        for(Square opp_sq : BoardView(opp_board)){
+            PieceType opp_pc = pos.peek_piece_at(opp_sq).type;
+            
+            int min_dist_to_this_enemy = 1000;
+            bool can_be_killed = false;
 
-    const int SCALE = 10000;
-    long long score_calc = (long long)(my_raw_score - opp_raw_score) * SCALE;
-    int final_score = static_cast<int>(score_calc / total_score);
+            for(Square my_sq : BoardView(my_board)){
+                PieceType my_pc = pos.peek_piece_at(my_sq).type;
+                
+                // Only measure distance if I can actually hurt them
+                if(my_pc > opp_pc && !(opp_pc > my_pc)){
+                    int d = SquareDistance[my_sq][opp_sq];
+                    if(d < min_dist_to_this_enemy){
+                        min_dist_to_this_enemy = d;
+                        can_be_killed = true;
+                    }
+                }
+            }
+            if(can_be_killed){
+                score -= min_dist_to_this_enemy;
+            }
+        }
+    }
 
-    return final_score;
+    return score;
 }
 
 

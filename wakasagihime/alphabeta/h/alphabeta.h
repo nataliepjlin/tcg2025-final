@@ -19,6 +19,16 @@
 #include <unordered_map>
 #include <vector>
 
+const int Piece_Value[] = {
+    810, // General
+    270, // Advisor
+    90,  // Elephant
+    18,  // Chariot
+    6,   // Horse
+    18,  // Cannon
+    1    // Soldier
+};
+
 const double INF = 2e9;
 const int AB_WIN_SCORE = 20000;
 const int FORCE_WIN_THRESHOLD = AB_WIN_SCORE / 2;

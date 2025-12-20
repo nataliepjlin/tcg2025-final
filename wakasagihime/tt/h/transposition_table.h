@@ -29,7 +29,7 @@ public:
     static constexpr size_t TT_MASK = TT_SIZE - 1;
     TranspositionTable() : table(TT_SIZE) {}
 
-    bool probe(uint64_t hash, long double alpha, long double beta, const int depth, long double &ret_score, Move &tt_move);
+    bool probe(uint64_t hash, long double &alpha, long double &beta, const int depth, long double &ret_score, Move &tt_move);
     void store(uint64_t hash, const long double score, const int depth, const TT_Flag flag, const Move &best_move);
 
 private:
