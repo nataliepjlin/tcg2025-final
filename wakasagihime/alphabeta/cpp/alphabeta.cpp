@@ -12,10 +12,10 @@ static const int DISTANCE_TABLE[11] = {
 AlphaBetaEngine::AlphaBetaEngine(){
     zobrist_.init_zobrist();
 
-    if(!table_loaded){
-        load_material_table();
-        table_loaded = true;
-    }
+    // if(!table_loaded){
+    //     load_material_table();
+    //     table_loaded = true;
+    // }
 }
 
 void AlphaBetaEngine::load_material_table(){
