@@ -36,18 +36,22 @@ __attribute__((constructor)) void prepare()
 int main()
 {
     std::string line;
-    AlphaBetaEngine engine = AlphaBetaEngine();
+    auto engine = std::make_unique<AlphaBetaEngine>();
     Move prev_move;
     while (std::getline(std::cin, line)) {
         Position pos(line);
         if(pos.time_left() < -1.0){
             // not my turn
-            if(prev_move.type() == Flipping){
-                engine.update_unrevealed(pos);
+            if(pos.count(Hidden) == SQUARE_NB){
+                // opponent is starting first
+                engine->init_game();
+            }
+            else if(prev_move.type() == Flipping){
+                engine->update_unrevealed(pos);
             }
             continue;
         }
-        Move best_move = engine.search(pos);
+        Move best_move = engine->search(pos);
         info << best_move;
         prev_move = best_move;
     }

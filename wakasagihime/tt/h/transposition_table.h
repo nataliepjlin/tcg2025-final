@@ -14,7 +14,7 @@ enum TT_Flag{
 struct TT_Entry{
     uint64_t hash; // 8 bytes
     int depth; // 4 bytes
-    int score; // 4 bytes
+    double score; // 8 bytes
     uint8_t flag; // 1 byte (uint8_t)
     Move best_move; // 2 bytes
     TT_Entry()
@@ -29,8 +29,8 @@ public:
     static constexpr size_t TT_MASK = TT_SIZE - 1;
     TranspositionTable() : table(TT_SIZE) {}
 
-    bool probe(uint64_t hash, int &alpha, int &beta, const int depth, int &ret_score, Move &tt_move);
-    void store(uint64_t hash, const int score, const int depth, const TT_Flag flag, const Move &best_move);
+    bool probe(uint64_t hash, double &alpha, double &beta, const int depth, double &ret_score, Move &tt_move);
+    void store(uint64_t hash, const double score, const int depth, const TT_Flag flag, const Move &best_move);
 
 private:
     std::vector<TT_Entry> table;

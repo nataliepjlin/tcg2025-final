@@ -1,7 +1,7 @@
 #include "../h/transposition_table.h"
 #include <algorithm>
 
-bool TranspositionTable::probe(uint64_t hash, int &alpha, int &beta, const int depth, int &ret_score, Move &tt_move){
+bool TranspositionTable::probe(uint64_t hash, double &alpha, double &beta, const int depth, double &ret_score, Move &tt_move){
     size_t index = hash & TT_MASK; // hash % TT_SIZE
     TT_Entry &entry = table[index];
     if(entry.hash == hash){
@@ -29,7 +29,7 @@ bool TranspositionTable::probe(uint64_t hash, int &alpha, int &beta, const int d
     return false;
 }
 
-void TranspositionTable::store(uint64_t hash, const int score, const int depth, const TT_Flag flag, const Move &best_move){
+void TranspositionTable::store(uint64_t hash, const double score, const int depth, const TT_Flag flag, const Move &best_move){
     size_t index = hash & TT_MASK; // hash % TT_SIZE
     TT_Entry &entry = table[index];
     if (entry.hash != hash || depth >= entry.depth) {
