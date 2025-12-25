@@ -69,6 +69,13 @@ const double MIN_TIME_MS = 100.0;
 
 const int EXPECTED_PLYS = 80;
 const int EXPECTED_PLY_LONG = 120;
+const double ASPIRATION_WINDOW = 25.0;
+
+const double EPSILON = 1e-5;
+const int SCORE_TT_MOVE = 100000000;
+const int SCORE_CAPTURE_BASE = 50000000;
+const int SCORE_FLIP_BASE = 40000000;
+const int SCORE_HISTORY_MAX = 10000000;
 
 class AlphaBetaEngine{
 public:
@@ -88,8 +95,8 @@ private:
     int history_table_[SQUARE_NB][SQUARE_NB];
     void age_history_table();
 
-    double star0(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key);
-    double f3(Position &pos, double alpha, double beta, int depth, uint64_t key);
+    double star0(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref);
+    double f3(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint = Move());
     double eval(const Position &pos, const int depth);
     double pos_score(const Position &pos, Color cur_color);
 
@@ -99,6 +106,7 @@ private:
     int node_count_ = 0;
     int no_eat_flip = 0;
     int ply_count_ = 0;// total ply count in the game
+    int prev_total_count = SQUARE_NB;
     std::chrono::time_point<std::chrono::steady_clock> start_time_{};
     int time_limit_ms_ = 4500;
     TranspositionTable tt_;
@@ -106,7 +114,7 @@ private:
 
     void load_material_table();
     int get_material_index(const Position &pos, Color cur_color) const;
-    double try_move(const Position &pos, const Move &mv, double alpha, double beta, int depth, uint64_t key);
+    double try_move(const Position &pos, const Move &mv, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref);
 
     const int init_counts[7] = {1, 2, 2, 2, 2, 2, 5};
     int unrevealed_count[2][7];// need track both!

@@ -9,6 +9,25 @@ static const int DISTANCE_TABLE[11] = {
     512, 256, 128, 64, 32, 16, 8, 4, 2, 1 
 };
 
+void log_position(int depth, Move best, bool last, bool start) {
+    std::ofstream fout("./log.log", std::ios::app); // append mode
+    if (!fout.is_open()) {
+        std::cerr << "Failed to open log file\n";
+        return;
+    }
+    if(start){
+        fout << "A new game!\n";
+        fout << "------------------------\n";}
+    else if(last){
+        fout << "------------------------\n";
+    } else {
+    fout << "Now depth: " << depth << "\n";
+    fout << "Now best: " << best;}
+
+    
+    fout.close();
+}
+
 AlphaBetaEngine::AlphaBetaEngine(){
     zobrist_.init_zobrist();
 
@@ -31,6 +50,7 @@ void AlphaBetaEngine::load_material_table(){
 
 void AlphaBetaEngine::update_unrevealed(const Position &pos){
     bool changed = false;
+    int cur_total_count = pos.count();
     for(int c = 0; c < SIDE_NB; c++){
         for(int pt = General; pt <= Soldier; pt++){
             int unrevealed = init_counts[pt] - pos.count(Color(c), PieceType(pt));
@@ -40,12 +60,13 @@ void AlphaBetaEngine::update_unrevealed(const Position &pos){
             }
         }
     }
-    if(!changed){
+    if(!changed && cur_total_count == prev_total_count){
         no_eat_flip++;
     }
     else{
         no_eat_flip = 0;
     }
+    prev_total_count = cur_total_count;
 }
 
 double AlphaBetaEngine::eval(const Position &pos, const int depth){
@@ -63,7 +84,7 @@ double AlphaBetaEngine::eval(const Position &pos, const int depth){
     return pos_score(pos, pos.due_up());
 }
 
-double AlphaBetaEngine::star0(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key){
+double AlphaBetaEngine::star0(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
     (void)alpha;
     (void)beta;
     double vsum = 0;
@@ -82,7 +103,7 @@ double AlphaBetaEngine::star0(const Move &mv, const Position &pos, double alpha,
             copy.do_move(mv);
             uint64_t child_key = zobrist_.update_zobrist_hash(key, mv, pos, p);
             unrevealed_count[c][pt]--;// temporarily decrease count
-            vsum += count * -f3(copy, -INF, INF, depth, child_key);
+            vsum += count * -f3(copy, -INF, INF, depth, child_key, dummy_ref);
             unrevealed_count[c][pt]++;// restore count
             D += count;
         }
@@ -93,21 +114,20 @@ double AlphaBetaEngine::star0(const Move &mv, const Position &pos, double alpha,
     return vsum / D;
 }
 
-double AlphaBetaEngine::try_move(const Position &pos, const Move &mv, double alpha, double beta, int depth, uint64_t key){
+double AlphaBetaEngine::try_move(const Position &pos, const Move &mv, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
     if(mv.type() == Flipping){
-        return star0(mv, pos, alpha, beta, depth - 1, key);
+        return star0(mv, pos, alpha, beta, depth - 1, key, dummy_ref);
     }
     else{
         Position copy(pos);
         copy.do_move(mv);
         uint64_t child_key = zobrist_.update_zobrist_hash(key, mv, pos, Piece());
-        return -f3(copy, -beta, -alpha, depth - 1, child_key);
+        return -f3(copy, -beta, -alpha, depth - 1, child_key, dummy_ref, Move());
     }
 }
 
 
-double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, uint64_t key){
-    // Check time every 256 nodes for more frequent timeout checks
+double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint){
     if((++node_count_ & 255) == 0){
         auto now = std::chrono::steady_clock::now();
         if(std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time_).count() > time_limit_ms_){
@@ -120,18 +140,16 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
     Move tt_move = Move();
     double tt_value;
     if(tt_.probe(key, alpha, beta, depth, tt_value, tt_move)){
+        best_move_ref = tt_move; 
         return tt_value;
     }
 
-    // Depth limit check
+    // Terminal check
     if(pos.winner() != NO_COLOR){
         int diff = pos_score(pos, pos.due_up());
-        if(pos.winner() == pos.due_up())
-            return AB_WIN_SCORE + depth + diff;
-        else if(pos.winner() == Mystery)
-            return diff; // Draw
-        else
-            return -(AB_WIN_SCORE + depth) + diff;
+        if(pos.winner() == pos.due_up()) return AB_WIN_SCORE + depth + diff;
+        else if(pos.winner() == Mystery) return diff; 
+        else return -(AB_WIN_SCORE + depth) + diff;
     }
 
     // Depth Cutoff
@@ -139,17 +157,25 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
         return pos_score(pos, pos.due_up());
     }
 
-    auto moves = get_ordered_moves(pos, tt_move);
+    Move sort_move = (pv_hint != Move()) ? pv_hint : tt_move;
+    auto moves = get_ordered_moves(pos, sort_move);
+    
+    if (moves.empty()) return -(AB_WIN_SCORE + depth);
+
     double m = -INF;
     Move best_move_this_node = moves[0].mv;
+    best_move_ref = best_move_this_node; 
+
+    Move dummy_ref;
     for(int i = 0; i < moves.size(); i++){        
-        double t = try_move(pos, moves[i].mv, std::max(alpha, m), beta, depth, key);
-        if(time_out_){
-            return 0;
-        }
+        double t = try_move(pos, moves[i].mv, std::max(alpha, m), beta, depth, key, dummy_ref);
+        
+        if(time_out_) return 0;
+
         if(t > m){
             m = t;
             best_move_this_node = moves[i].mv;
+            best_move_ref = best_move_this_node; 
         }
         if(m >= beta){
             tt_.store(key, m, depth, TT_BETA, best_move_this_node);
@@ -186,6 +212,7 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
 void AlphaBetaEngine::init_game(){
     ply_count_ = 0;
     no_eat_flip = 0;
+    prev_total_count = SQUARE_NB;
     std::memset(history_table_, 0, sizeof(history_table_));
     for(int pt = General; pt <= Soldier; pt++){
         unrevealed_count[0][pt] = init_counts[pt];
@@ -210,23 +237,25 @@ std::vector<AlphaBetaEngine::ScoredMove> AlphaBetaEngine::get_ordered_moves(cons
         int score = 0;
 
         if(mv == tt_move){
-            score = 2000000;
+            score = SCORE_TT_MOVE; // Highest priority
         } 
         else if(mv.type() == Flipping){
-            score = 100000 + flip_score;
+            score = SCORE_FLIP_BASE + flip_score; // Higher than History
         }
         else{
             PieceType from = pos.peek_piece_at(mv.from()).type;
             PieceType to = pos.peek_piece_at(mv.to()).type;
 
             if(to != NO_PIECE){
-                score = 100000 + yummy_table[from][to];
+                // Eating: Higher than Flips and History
+                score = SCORE_CAPTURE_BASE + yummy_table[from][to];
             } 
             else{
                 if(no_eat_flip >= MAX_NO_EAT_FLIP){
-                    score = 1;// avoid draw
+                    score = 1; // Avoid draw
                 }
                 else {
+                    // History: Lowest priority (0 to 1,000,000)
                     score = history_table_[mv.from()][mv.to()];
                 }
             }
@@ -262,15 +291,12 @@ Move AlphaBetaEngine::search(Position &pos){
     // handle new game start
     if(pos.count(Hidden) == SQUARE_NB){
         // restore unrevealed pieces
+        log_position(0, Move(), false, true);
         init_game();
         return Move(SQ_D2, SQ_D2); // flip center piece
     }
     this->ply_count_++;
     update_unrevealed(pos);// may be eaten by opponent in last turn
-
-    double alloc_ms = estimatePlyTime(pos);
-    time_limit_ms_ = static_cast<int>(alloc_ms);
-    double time_limit_sec = alloc_ms / 1000.0; 
 
     Move best_move_root = Move();
     uint64_t key = zobrist_.compute_zobrist_hash(pos);
@@ -278,63 +304,31 @@ Move AlphaBetaEngine::search(Position &pos){
     Move tt_move = Move();
     double tt_val;
     double dummy_alpha = -INF, dummy_beta = INF;
-    if(tt_.probe(key, dummy_alpha, dummy_beta, 0, tt_val, tt_move)){
-        best_move_root = tt_move; // Seed the best move!
-    }
+    tt_.probe(key, dummy_alpha, dummy_beta, 0, tt_val, tt_move);
     auto moves = get_ordered_moves(pos, best_move_root);
     if(best_move_root == Move()){
         best_move_root = moves[0].mv;
     }
+    else if(moves.empty()){
+        error << "NO AVAILABLE MOVE\n";
+    }
 
-    double duration_prev_depth = 0.0;
-
-    for(int depth = 1; depth <= 50;){
-        auto iter_start = std::chrono::steady_clock::now();
-        double mx = -INF;
-        double alpha = -INF;
-        double beta = INF;
+    for(int depth = 1; depth <= 50; depth++){
         
-        Move best_move_this_iter = moves[0].mv;
-        if(best_move_root == Move()){// safe-guard for first iter
-            best_move_root = best_move_this_iter;
-        }
-
-        // Search root children manually to track best_move
-        for(int i = 0; i < moves.size(); i++){
-            double t = try_move(pos, moves[i].mv, std::max(alpha, mx), beta, depth, key);
-            if(time_out_){
-                if(i > 0){
-                    // partial pv
-                    best_move_root = best_move_this_iter;
-                }
-                return best_move_root;
-            }
-            if(t > mx){
-                mx = t;
-                best_move_this_iter = moves[i].mv;
-            }
-        }
+        Move best_move_this_iter = Move();
+        
+        f3(pos, -INF, INF, depth, key, best_move_this_iter, best_move_root);
+        
         if(time_out_){
+            if(best_move_this_iter != Move()){
+                best_move_root = best_move_this_iter;
+            }
+            log_position(depth, best_move_root, true, false);
             break;
-        }
-        if(mx > alpha){
-            tt_.store(key, mx, depth, TT_EXACT, best_move_this_iter);
-        }
-        else{
-            tt_.store(key, mx, depth, TT_ALPHA, best_move_this_iter);
         }
         
         best_move_root = best_move_this_iter;
-
-        // Measure duration of THIS iteration
-        auto iter_end = std::chrono::steady_clock::now();
-        std::chrono::duration<double> duration = iter_end - iter_start;
-        duration_prev_depth = duration.count();
-
-        if(depth == 1) depth = 2;
-        else depth += 2;
-
-        moves = get_ordered_moves(pos, best_move_root);// reorder for next iter
+        log_position(depth, best_move_root, false, false);
     }
     return best_move_root;
 }
