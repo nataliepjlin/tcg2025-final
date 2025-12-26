@@ -4,13 +4,12 @@
 
 int AlphaBetaEngine::material_table[MAT_SIZE][MAT_SIZE];
 bool AlphaBetaEngine::table_loaded = false;
-static const int DISTANCE_TABLE[11] = { 
-    0, 
-    512, 256, 128, 64, 32, 16, 8, 4, 2, 1 
+static const double DISTANCE_TABLE_SCALED[11] = { 
+    0.0, 0.8, 0.4, 0.2, 0.1, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0 
 };
 
 void log_position(int depth, Move best, bool last, bool start) {
-    std::ofstream fout("./log.log", std::ios::app); // append mode
+    std::ofstream fout("./log_negascout.log", std::ios::app); // append mode
     if (!fout.is_open()) {
         std::cerr << "Failed to open log file\n";
         return;
@@ -163,17 +162,25 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
     if (moves.empty()) return -(AB_WIN_SCORE + depth);
 
     double m = -INF;
+    double n = beta;
     Move best_move_this_node = moves[0].mv;
     best_move_ref = best_move_this_node; 
 
     Move dummy_ref;
     for(int i = 0; i < moves.size(); i++){        
-        double t = try_move(pos, moves[i].mv, std::max(alpha, m), beta, depth, key, dummy_ref);
+        double t = try_move(pos, moves[i].mv, std::max(alpha, m), n, depth, key, dummy_ref);
         
         if(time_out_) return 0;
 
         if(t > m){
-            m = t;
+            if(n == beta || depth < 3 || t >= beta || moves[i].mv.type() == Flipping){
+                m = t;
+            }
+            else{
+                // Re-search
+                m = try_move(pos, moves[i].mv, t, beta, depth, key, dummy_ref);
+                if(time_out_) return 0;
+            }
             best_move_this_node = moves[i].mv;
             best_move_ref = best_move_this_node; 
         }
@@ -193,6 +200,7 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
 
             return m; // Beta cutoff
         }
+        n = std::max(alpha, m) + 0.001;
     }
 
     if(m > alpha){
@@ -379,7 +387,7 @@ double AlphaBetaEngine::pos_score(const Position &pos, const Color cur_color){
                 }
             }
             if(can_be_killed){
-                score -= min_dist_to_this_enemy;
+                score += DISTANCE_TABLE_SCALED[min_dist_to_this_enemy];
             }
         }
     }
