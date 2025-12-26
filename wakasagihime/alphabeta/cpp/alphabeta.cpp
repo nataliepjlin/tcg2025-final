@@ -1,12 +1,23 @@
 #ifndef ALPHABETA_CPP
 #define ALPHABETA_CPP
 #include "../h/alphabeta.h"
+#include <fstream>
 
 int AlphaBetaEngine::material_table[MAT_SIZE][MAT_SIZE];
 bool AlphaBetaEngine::table_loaded = false;
 static const double DISTANCE_TABLE_SCALED[11] = { 
-    0.0, 0.8, 0.4, 0.2, 0.1, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0 
+    0.0, 0.5, 0.3, 0.2, 0.1, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0 
 };
+
+static std::ofstream f3_dumper;
+#define RET_LOG(score_expr) { \
+    double _val = (score_expr); \
+    if (!time_out_) { \
+        if (!f3_dumper.is_open()) f3_dumper.open("f3_scores.csv", std::ios::app); \
+        f3_dumper << _val << "\n"; \
+    } \
+    return _val; \
+}
 
 void log_position(int depth, Move best, bool last, bool start) {
     std::ofstream fout("./log_negascout.log", std::ios::app); // append mode

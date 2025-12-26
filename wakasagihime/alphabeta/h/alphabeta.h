@@ -21,12 +21,12 @@
 #include <cstring>
 
 const int Piece_Value[] = {
-    810, // General
-    270, // Advisor
-    90,  // Elephant
-    18,  // Chariot
-    6,   // Horse
-    18,  // Cannon
+    30, // General
+    15, // Advisor
+    10,  // Elephant
+    5,  // Chariot
+    3,   // Horse
+    5,  // Cannon
     1    // Soldier
 };
 
@@ -57,8 +57,8 @@ const int yummy_table[7][8] = {
 const int flip_score = 10;
 
 const double INF = 1e6;
-const int AB_WIN_SCORE = 20000;
-const int FORCE_WIN_THRESHOLD = AB_WIN_SCORE / 2;
+const int AB_WIN_SCORE = 1000; 
+const int FORCE_WIN_THRESHOLD = 800;
 const double WIN = 1.0;
 const double LOSS = 0.0;
 constexpr int MAT_SIZE = 2916;
