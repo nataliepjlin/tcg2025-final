@@ -61,22 +61,22 @@ void AlphaBetaEngine::load_material_table(){
 }
 
 void AlphaBetaEngine::update_unrevealed(const Position &pos){
-    bool changed = false;
+    bool flip_occurred = false;
     int cur_total_count = pos.count();
     for(int c = 0; c < SIDE_NB; c++){
         for(int pt = General; pt <= Soldier; pt++){
-            int unrevealed = init_counts[pt] - pos.count(Color(c), PieceType(pt));
-            if(unrevealed_count[c][pt] != unrevealed){
-                unrevealed_count[c][pt] = unrevealed;
-                changed = true;
+            int theoretical_unrevealed = init_counts[pt] - pos.count(Color(c), PieceType(pt));
+            if(theoretical_unrevealed < unrevealed_count[c][pt]){
+                unrevealed_count[c][pt] = theoretical_unrevealed;
+                flip_occurred = true;
             }
         }
     }
-    if(!changed && cur_total_count == prev_total_count){
-        no_eat_flip++;
+    if(cur_total_count < prev_total_count || flip_occurred){
+        no_eat_flip = 0;
     }
     else{
-        no_eat_flip = 0;
+        no_eat_flip++;
     }
     prev_total_count = cur_total_count;
 }
@@ -97,10 +97,17 @@ double AlphaBetaEngine::eval(const Position &pos, const int depth){
 }
 
 double AlphaBetaEngine::star0(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
-    (void)alpha;
-    (void)beta;
     double vsum = 0;
     int D = 0;// total number of unrevealed pieces
+    for(Color c: {Red, Black}){
+        for(int pt = General; pt <= Soldier; pt++){
+            if(unrevealed_count[c][pt] <= 0) continue;
+            D += unrevealed_count[c][pt];
+        }
+    }
+    if(D == 0) return 0; // should not happen
+
+    double m = V_MIN, M = V_MAX;
     for(Color c: {Red, Black}){
         for(int pt = General; pt <= Soldier; pt++){
             if(unrevealed_count[c][pt] <= 0) continue;
@@ -115,13 +122,17 @@ double AlphaBetaEngine::star0(const Move &mv, const Position &pos, double alpha,
             copy.do_move(mv);
             uint64_t child_key = zobrist_.update_zobrist_hash(key, mv, pos, p);
             unrevealed_count[c][pt]--;// temporarily decrease count
-            vsum += count * -f3(copy, -INF, INF, depth, child_key, dummy_ref);
+            long double t = -f3(copy, V_MIN, V_MAX, depth, child_key, dummy_ref);
             unrevealed_count[c][pt]++;// restore count
-            D += count;
+            double probability = (double)count / D;
+            m = m + (t-V_MIN) * probability;
+            M = M + (t-V_MAX) * probability;
+            if(m >= beta) return m;
+            if(M <= alpha) return M;
+            vsum += t * count;
         }
     }
 
-    if(D == 0) return 0; // should not happen
 
     return vsum / D;
 }
@@ -181,7 +192,8 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
 
     Move dummy_ref;
     for(int i = 0; i < moves.size(); i++){        
-        double t = try_move(pos, moves[i].mv, std::max(alpha, m), n, depth, key, dummy_ref);
+        double upper_bound = (moves[i].mv.type() == Flipping) ? beta : n;
+        double t = try_move(pos, moves[i].mv, std::max(alpha, m), upper_bound, depth, key, dummy_ref);
         
         if(time_out_) return 0;
 
@@ -312,7 +324,7 @@ Move AlphaBetaEngine::search(Position &pos){
     // handle new game start
     if(pos.count(Hidden) == SQUARE_NB){
         // restore unrevealed pieces
-        log_position(0, Move(), false, true);
+        // log_position(0, Move(), false, true);
         init_game();
         return Move(SQ_D2, SQ_D2); // flip center piece
     }
@@ -344,12 +356,12 @@ Move AlphaBetaEngine::search(Position &pos){
             if(best_move_this_iter != Move()){
                 best_move_root = best_move_this_iter;
             }
-            log_position(depth, best_move_root, true, false);
+            // log_position(depth, best_move_root, true, false);
             break;
         }
         
         best_move_root = best_move_this_iter;
-        log_position(depth, best_move_root, false, false);
+        // log_position(depth, best_move_root, false, false);
     }
     return best_move_root;
 }
