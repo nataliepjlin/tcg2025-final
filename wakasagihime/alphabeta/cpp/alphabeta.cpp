@@ -8,6 +8,8 @@ bool AlphaBetaEngine::table_loaded = false;
 static const double DISTANCE_TABLE_SCALED[11] = { 
     0.0, 0.5, 0.3, 0.2, 0.1, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0 
 };
+// Aggressive safety ramp to protect the last pawn
+static const double KING_SAFETY_BONUS[6] = { 20.0, 5.0, 2.0, 1.0, 0.0, 0.0 };
 
 static std::ofstream f3_dumper;
 #define RET_LOG(score_expr) { \
@@ -365,9 +367,20 @@ int AlphaBetaEngine::get_material_index(const Position &pos, Color c) const{
 double AlphaBetaEngine::pos_score(const Position &pos, const Color cur_color){
     double score = 0;
     Color opp_color = Color(cur_color ^ 1);
+
+    int red_pawns = pos.count(Red, Soldier) + unrevealed_count[Red][Soldier];
+    int black_pawns = pos.count(Black, Soldier) + unrevealed_count[Black][Soldier];
+    // safety clamp
+    red_pawns = std::min(red_pawns, 5);
+    black_pawns = std::min(black_pawns, 5);
+    double red_gen_bonus = KING_SAFETY_BONUS[black_pawns];
+    double black_gen_bonus = KING_SAFETY_BONUS[red_pawns];
     
     for(Square sq = SQ_A1; sq < SQUARE_NB; sq = Square(sq + 1)){
         Piece p = pos.peek_piece_at(sq);
+        if(p.type == General){
+            score += (p.side == Red) ? red_gen_bonus : black_gen_bonus;
+        }
         if(p.side == cur_color){
             score += Piece_Value[p.type];
         }
