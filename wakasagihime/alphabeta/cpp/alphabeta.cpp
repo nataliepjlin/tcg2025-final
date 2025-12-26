@@ -96,7 +96,7 @@ double AlphaBetaEngine::eval(const Position &pos, const int depth){
     return pos_score(pos, pos.due_up());
 }
 
-double AlphaBetaEngine::star0(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
+double AlphaBetaEngine::star0_5(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
     double vsum = 0;
     int D = 0;// total number of unrevealed pieces
     for(Color c: {Red, Black}){
@@ -139,7 +139,7 @@ double AlphaBetaEngine::star0(const Move &mv, const Position &pos, double alpha,
 
 double AlphaBetaEngine::try_move(const Position &pos, const Move &mv, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
     if(mv.type() == Flipping){
-        return star0(mv, pos, alpha, beta, depth - 1, key, dummy_ref);
+        return star0_5(mv, pos, alpha, beta, depth - 1, key, dummy_ref);
     }
     else{
         Position copy(pos);
