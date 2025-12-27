@@ -57,8 +57,7 @@ const int yummy_table[7][8] = {
 const int flip_score = 10;
 
 const double INF = 1e6;
-const int AB_WIN_SCORE = 1000; 
-const int FORCE_WIN_THRESHOLD = 800;
+const int AB_WIN_SCORE = 300;
 const double WIN = 1.0;
 const double LOSS = 0.0;
 constexpr int MAT_SIZE = 2916;
