@@ -46,7 +46,7 @@ int main()
                 // opponent is starting first
                 engine->init_game();
             }
-            else if(prev_move.type() == Flipping){
+            else{
                 engine->update_unrevealed(pos);
             }
             continue;

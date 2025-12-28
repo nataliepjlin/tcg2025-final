@@ -65,11 +65,15 @@ void AlphaBetaEngine::update_unrevealed(const Position &pos){
     int cur_total_count = pos.count();
     for(int c = 0; c < SIDE_NB; c++){
         for(int pt = General; pt <= Soldier; pt++){
-            int theoretical_unrevealed = init_counts[pt] - pos.count(Color(c), PieceType(pt));
-            if(theoretical_unrevealed < unrevealed_count[c][pt]){
-                unrevealed_count[c][pt] = theoretical_unrevealed;
+            int current_revealed = pos.count(Color(c), PieceType(pt)); 
+            int diff = current_revealed - prev_revealed_count[c][pt];
+            if(diff > 0){
+                unrevealed_count[c][pt] -= diff;
+                if(unrevealed_count[c][pt] < 0) unrevealed_count[c][pt] = 0;
+                
                 flip_occurred = true;
             }
+            prev_revealed_count[c][pt] = current_revealed;
         }
     }
     if(cur_total_count < prev_total_count || flip_occurred){
@@ -96,20 +100,15 @@ double AlphaBetaEngine::eval(const Position &pos, const int depth){
     return pos_score(pos, pos.due_up());
 }
 
-double AlphaBetaEngine::star0_5(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
+double AlphaBetaEngine::star1(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
     double vsum = 0;
-    int D = 0;// total number of unrevealed pieces
-    for(Color c: {Red, Black}){
-        for(int pt = General; pt <= Soldier; pt++){
-            if(unrevealed_count[c][pt] <= 0) continue;
-            D += unrevealed_count[c][pt];
-        }
-    }
-    if(D == 0) return 0; // should not happen
+    int D = pos.count(Hidden);
 
     double m = V_MIN, M = V_MAX;
+    double A = D * (alpha - V_MAX);
+    double B = D * (beta - V_MIN);
     for(Color c: {Red, Black}){
-        for(int pt = General; pt <= Soldier; pt++){
+        for(int pt = Soldier; pt >= General; pt--){
             if(unrevealed_count[c][pt] <= 0) continue;
 
             Piece p(c, PieceType(pt));
@@ -122,24 +121,34 @@ double AlphaBetaEngine::star0_5(const Move &mv, const Position &pos, double alph
             copy.do_move(mv);
             uint64_t child_key = zobrist_.update_zobrist_hash(key, mv, pos, p);
             unrevealed_count[c][pt]--;// temporarily decrease count
-            long double t = -f3(copy, V_MIN, V_MAX, depth, child_key, dummy_ref);
+            A = A / count + V_MAX;
+            B = B / count + V_MIN;
+            long double t = -f3(copy, -std::min(B, V_MAX), -std::max(A, V_MIN), depth, child_key, dummy_ref);
             unrevealed_count[c][pt]++;// restore count
             double probability = (double)count / D;
             m = m + (t-V_MIN) * probability;
             M = M + (t-V_MAX) * probability;
-            if(m >= beta) return m;
-            if(M <= alpha) return M;
-            vsum += t * count;
+            if(t >= B){
+                // debug << "Pruned in star1 with t >= B ( t = " << t << " , B = " << B << " )\n";
+                return m;
+            }
+            if(t <= A){
+                // debug << "Pruned in star1 with t <= A ( t = " << t << " , A = " << A << " )\n";
+                return M;
+            }
+            A = count * (A - t);
+            B = count * (B - t);
+            vsum += t * probability;
         }
     }
 
 
-    return vsum / D;
+    return vsum;
 }
 
 double AlphaBetaEngine::try_move(const Position &pos, const Move &mv, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
     if(mv.type() == Flipping){
-        return star0_5(mv, pos, alpha, beta, depth - 1, key, dummy_ref);
+        return star1(mv, pos, alpha, beta, depth - 1, key, dummy_ref);
     }
     else{
         Position copy(pos);
@@ -251,6 +260,7 @@ void AlphaBetaEngine::init_game(){
         unrevealed_count[0][pt] = init_counts[pt];
         unrevealed_count[1][pt] = init_counts[pt];
     }
+    std::memset(prev_revealed_count, 0, sizeof(prev_revealed_count));
 }
 
 void AlphaBetaEngine::age_history_table() {

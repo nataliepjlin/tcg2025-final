@@ -97,7 +97,7 @@ private:
     int history_table_[SQUARE_NB][SQUARE_NB];
     void age_history_table();
 
-    double star0_5(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref);
+    double star1(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref);
     double f3(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint = Move());
     double eval(const Position &pos, const int depth);
     double pos_score(const Position &pos, Color cur_color);
@@ -120,6 +120,7 @@ private:
 
     const int init_counts[7] = {1, 2, 2, 2, 2, 2, 5};
     int unrevealed_count[2][7];// need track both!
+    int prev_revealed_count[2][7];// for chance node
 };
 
 #endif
