@@ -9,7 +9,7 @@ static const double DISTANCE_TABLE_SCALED[11] = {
     0.0, 0.5, 0.3, 0.2, 0.1, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0 
 };
 // Aggressive safety ramp to protect the last pawn
-static const double KING_SAFETY_BONUS[6] = { 20.0, 5.0, 2.0, 1.0, 0.0, 0.0 };
+// static const double KING_SAFETY_BONUS[6] = { 20.0, 5.0, 2.0, 1.0, 0.0, 0.0 };
 
 static std::ofstream f3_dumper;
 #define RET_LOG(score_expr) { \
@@ -385,8 +385,8 @@ double AlphaBetaEngine::pos_score(const Position &pos, const Color cur_color){
     // safety clamp
     red_pawns = std::min(red_pawns, 5);
     black_pawns = std::min(black_pawns, 5);
-    double red_gen_bonus = KING_SAFETY_BONUS[black_pawns];
-    double black_gen_bonus = KING_SAFETY_BONUS[red_pawns];
+    double red_gen_bonus = 0;
+    double black_gen_bonus = 0;
     
     for(Square sq = SQ_A1; sq < SQUARE_NB; sq = Square(sq + 1)){
         Piece p = pos.peek_piece_at(sq);
