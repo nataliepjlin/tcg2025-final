@@ -103,7 +103,7 @@ double AlphaBetaEngine::star1(const Move &mv, const Position &pos, double alpha,
             if(unrevealed_count[c][pt] <= 0) continue;
 
             Piece p(c, PieceType(pt));
-            int count = unrevealed_count[c][pt];
+            double count = unrevealed_count[c][pt];
 
             Position copy(pos);
             copy.clear_collection();
@@ -124,7 +124,7 @@ double AlphaBetaEngine::star1(const Move &mv, const Position &pos, double alpha,
             if(t > V_MAX) t = V_MAX;
             if(t < V_MIN) t = V_MIN;
 
-            double probability = (double)count / D;
+            double probability = count / D;
             m = m + (t-V_MIN) * probability;
             M = M + (t-V_MAX) * probability;
             if(t >= B){
