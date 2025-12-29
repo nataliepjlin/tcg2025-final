@@ -76,8 +76,8 @@ const int SCORE_CAPTURE_BASE = 50000000;
 const int SCORE_FLIP_BASE = 40000000;
 const int SCORE_HISTORY_MAX = 10000000;
 
-const double V_MAX = 450.0;
-const double V_MIN = -450.0;
+const double V_MAX = 320.0;
+const double V_MIN = -320.0;
 
 class AlphaBetaEngine{
 public:

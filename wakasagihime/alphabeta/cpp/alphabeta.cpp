@@ -61,7 +61,6 @@ void AlphaBetaEngine::load_material_table(){
 }
 
 void AlphaBetaEngine::update_unrevealed(const Position &pos){
-    bool flip_occurred = false;
     int cur_total_count = pos.count();
     for(int c = 0; c < SIDE_NB; c++){
         for(int pt = General; pt <= Soldier; pt++){
@@ -70,17 +69,9 @@ void AlphaBetaEngine::update_unrevealed(const Position &pos){
             if(diff > 0){
                 unrevealed_count[c][pt] -= diff;
                 if(unrevealed_count[c][pt] < 0) unrevealed_count[c][pt] = 0;
-                
-                flip_occurred = true;
             }
             prev_revealed_count[c][pt] = current_revealed;
         }
-    }
-    if(cur_total_count < prev_total_count || flip_occurred){
-        no_eat_flip = 0;
-    }
-    else{
-        no_eat_flip++;
     }
     prev_total_count = cur_total_count;
 }
@@ -123,8 +114,16 @@ double AlphaBetaEngine::star1(const Move &mv, const Position &pos, double alpha,
             unrevealed_count[c][pt]--;// temporarily decrease count
             A = A / count + V_MAX;
             B = B / count + V_MIN;
-            long double t = -f3(copy, -std::min(B, V_MAX), -std::max(A, V_MIN), depth, child_key, dummy_ref);
-            unrevealed_count[c][pt]++;// restore count
+
+            double search_alpha = std::max(V_MIN, std::min(A, V_MAX));
+            double search_beta = std::max(V_MIN, std::min(B, V_MAX));
+
+            long double t = -f3(copy, -search_beta, -search_alpha, depth, child_key, dummy_ref);
+            unrevealed_count[c][pt]++;
+
+            if(t > V_MAX) t = V_MAX;
+            if(t < V_MIN) t = V_MIN;
+
             double probability = (double)count / D;
             m = m + (t-V_MIN) * probability;
             M = M + (t-V_MAX) * probability;
@@ -179,9 +178,9 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
     // Terminal check
     if(pos.winner() != NO_COLOR){
         int diff = pos_score(pos, pos.due_up());
-        if(pos.winner() == pos.due_up()) return AB_WIN_SCORE + depth + diff;
-        else if(pos.winner() == Mystery) return diff; 
-        else return -(AB_WIN_SCORE + depth) + diff;
+        if(pos.winner() == pos.due_up()) return AB_WIN_SCORE + depth;
+        else if(pos.winner() == Mystery) return 0; 
+        else return -(AB_WIN_SCORE + depth);
     }
 
     // Depth Cutoff
