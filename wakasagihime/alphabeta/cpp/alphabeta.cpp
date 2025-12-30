@@ -91,7 +91,7 @@ double AlphaBetaEngine::eval(const Position &pos, const int depth){
     return pos_score(pos, pos.due_up());
 }
 
-double AlphaBetaEngine::star1(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
+double AlphaBetaEngine::star1(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref, int flip_budget, int cooldown){
     double vsum = 0;
     int D = pos.count(Hidden);
 
@@ -118,7 +118,7 @@ double AlphaBetaEngine::star1(const Move &mv, const Position &pos, double alpha,
             double search_alpha = std::max(V_MIN, std::min(A, V_MAX));
             double search_beta = std::max(V_MIN, std::min(B, V_MAX));
 
-            long double t = -f3(copy, -search_beta, -search_alpha, depth, child_key, dummy_ref);
+            long double t = -f3(copy, -search_beta, -search_alpha, depth, child_key, dummy_ref, Move(), flip_budget - 1, 0);
             unrevealed_count[c][pt]++;
 
             if(t > V_MAX) t = V_MAX;
@@ -145,20 +145,20 @@ double AlphaBetaEngine::star1(const Move &mv, const Position &pos, double alpha,
     return vsum;
 }
 
-double AlphaBetaEngine::try_move(const Position &pos, const Move &mv, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref){
+double AlphaBetaEngine::try_move(const Position &pos, const Move &mv, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref, int flip_budget, int cooldown){
     if(mv.type() == Flipping){
-        return star1(mv, pos, alpha, beta, depth - 1, key, dummy_ref);
+        return star1(mv, pos, alpha, beta, depth - 1, key, dummy_ref, flip_budget, cooldown);
     }
     else{
         Position copy(pos);
         copy.do_move(mv);
         uint64_t child_key = zobrist_.update_zobrist_hash(key, mv, pos, Piece());
-        return -f3(copy, -beta, -alpha, depth - 1, child_key, dummy_ref, Move());
+        return -f3(copy, -beta, -alpha, depth - 1, child_key, dummy_ref, Move(), flip_budget, cooldown+1);
     }
 }
 
 
-double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint){
+double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint, int flip_budget, int cooldown){
     if((++node_count_ & 255) == 0){
         auto now = std::chrono::steady_clock::now();
         if(std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time_).count() > time_limit_ms_){
@@ -199,9 +199,17 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
     best_move_ref = best_move_this_node; 
 
     Move dummy_ref;
-    for(int i = 0; i < moves.size(); i++){        
+
+    MoveList<Moving>non_flip_moves(pos);
+    bool can_flip = (non_flip_moves.size() == 0 || (flip_budget > 0 && cooldown >= FLIP_COOLDOWN_REQ && depth >= MIN_DEPTH_FOR_FLIP));
+
+    for(int i = 0; i < moves.size(); i++){
+        if(moves[i].mv.type() == Flipping && !can_flip){
+            continue;
+        }
+
         double upper_bound = (moves[i].mv.type() == Flipping) ? beta : n;
-        double t = try_move(pos, moves[i].mv, std::max(alpha, m), upper_bound, depth, key, dummy_ref);
+        double t = try_move(pos, moves[i].mv, std::max(alpha, m), upper_bound, depth, key, dummy_ref, flip_budget, cooldown);
         
         if(time_out_) return 0;
 
@@ -211,7 +219,7 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
             }
             else{
                 // Re-search
-                m = try_move(pos, moves[i].mv, t, beta, depth, key, dummy_ref);
+                m = try_move(pos, moves[i].mv, t, beta, depth, key, dummy_ref, flip_budget, cooldown);
                 if(time_out_) return 0;
             }
             best_move_this_node = moves[i].mv;
@@ -260,6 +268,7 @@ void AlphaBetaEngine::init_game(){
         unrevealed_count[1][pt] = init_counts[pt];
     }
     std::memset(prev_revealed_count, 0, sizeof(prev_revealed_count));
+    prev_choices_.clear();
 }
 
 void AlphaBetaEngine::age_history_table() {
@@ -275,7 +284,13 @@ std::vector<AlphaBetaEngine::ScoredMove> AlphaBetaEngine::get_ordered_moves(cons
     std::vector<ScoredMove> moves;
     moves.reserve(raw_moves.size());
 
+    Move prev_choice = check_previous_choice(zobrist_.compute_zobrist_hash(pos));
+
     for(Move mv : raw_moves){
+        if(mv == prev_choice && pos_score(pos, pos.due_up()) > 0){
+            continue;// avoid cycles
+        }
+
         int score = 0;
 
         if(mv == tt_move){
@@ -293,13 +308,7 @@ std::vector<AlphaBetaEngine::ScoredMove> AlphaBetaEngine::get_ordered_moves(cons
                 score = SCORE_CAPTURE_BASE + yummy_table[from][to];
             } 
             else{
-                if(no_eat_flip >= MAX_NO_EAT_FLIP){
-                    score = 1; // Avoid draw
-                }
-                else {
-                    // History: Lowest priority (0 to 1,000,000)
-                    score = history_table_[mv.from()][mv.to()];
-                }
+                score = history_table_[mv.from()][mv.to()];
             }
         }
         moves.push_back({mv, score});
@@ -323,6 +332,17 @@ double AlphaBetaEngine::estimatePlyTime(const Position& pos) {
     }
 
     return std::max(MIN_TIME_MS, std::min(MAX_TIME_MS, pos.time_left() / (exp_ply-this->ply_count_+1) ));
+}
+
+void AlphaBetaEngine::store_choice(uint64_t key, Move mv){
+    prev_choices_[key] = mv;
+}
+Move AlphaBetaEngine::check_previous_choice(uint64_t key){
+    auto it = prev_choices_.find(key);
+    if(it != prev_choices_.end()){
+        return it->second;
+    }
+    return Move();
 }
 
 Move AlphaBetaEngine::search(Position &pos){
@@ -372,6 +392,7 @@ Move AlphaBetaEngine::search(Position &pos){
         best_move_root = best_move_this_iter;
         // log_position(depth, best_move_root, false, false);
     }
+    store_choice(key, best_move_root);
     return best_move_root;
 }
 

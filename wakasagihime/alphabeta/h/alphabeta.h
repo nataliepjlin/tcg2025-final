@@ -79,6 +79,10 @@ const int SCORE_HISTORY_MAX = 10000000;
 const double V_MAX = 320.0;
 const double V_MIN = -320.0;
 
+const int MAX_FLIP_BUDGET = 2;   // Max 2 flips per path
+const int FLIP_COOLDOWN_REQ = 3; // Separate flips by 3 moves
+const int MIN_DEPTH_FOR_FLIP = 4; // Stop flipping near leaf
+
 class AlphaBetaEngine{
 public:
     AlphaBetaEngine();
@@ -97,12 +101,15 @@ private:
     int history_table_[SQUARE_NB][SQUARE_NB];
     void age_history_table();
 
-    double star1(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref);
-    double f3(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint = Move());
+    double star1(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref, int flip_budget, int cooldown);
+    double f3(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint = Move(), int flip_budget = MAX_FLIP_BUDGET, int cooldown = 0);
     double eval(const Position &pos, const int depth);
     double pos_score(const Position &pos, Color cur_color);
 
     double estimatePlyTime(const Position& pos);
+
+    void store_choice(uint64_t key, Move mv);
+    Move check_previous_choice(uint64_t key);
 
     bool time_out_ = false;
     int node_count_ = 0;
@@ -116,11 +123,13 @@ private:
 
     void load_material_table();
     int get_material_index(const Position &pos, Color cur_color) const;
-    double try_move(const Position &pos, const Move &mv, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref);
+    double try_move(const Position &pos, const Move &mv, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref, int flip_budget, int cooldown);
 
     const int init_counts[7] = {1, 2, 2, 2, 2, 2, 5};
     int unrevealed_count[2][7];// need track both!
     int prev_revealed_count[2][7];// for chance node
+    
+    std::unordered_map<uint64_t, Move> prev_choices_;
 };
 
 #endif
