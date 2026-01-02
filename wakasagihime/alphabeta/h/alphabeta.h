@@ -58,6 +58,7 @@ const int flip_score = 10;
 
 const double INF = 1e6;
 const int AB_WIN_SCORE = 300;
+const int MAT_WIN_SCORE = 150;
 const double WIN = 1.0;
 const double LOSS = 0.0;
 constexpr int MAT_SIZE = 2916;
@@ -79,9 +80,9 @@ const int SCORE_HISTORY_MAX = 10000000;
 const double V_MAX = 320.0;
 const double V_MIN = -320.0;
 
-const int MAX_FLIP_BUDGET = 2;   // Max 2 flips per path
-const int FLIP_COOLDOWN_REQ = 3; // Separate flips by 3 moves
-const int MIN_DEPTH_FOR_FLIP = 4; // Stop flipping near leaf
+const int MAX_FLIP_BUDGET = 3;   // Max 2 flips per path
+const int FLIP_COOLDOWN_REQ = 1; // Separate flips by 1 move
+const int MIN_DEPTH_FOR_FLIP = 0; // Stop flipping near leaf
 
 class AlphaBetaEngine{
 public:
@@ -102,7 +103,7 @@ private:
     void age_history_table();
 
     double star1(const Move &mv, const Position &pos, double alpha, double beta, int depth, uint64_t key, Move &dummy_ref, int flip_budget, int cooldown);
-    double f3(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint = Move(), int flip_budget = MAX_FLIP_BUDGET, int cooldown = 0);
+    double f4(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint = Move(), int flip_budget = MAX_FLIP_BUDGET, int cooldown = 0);
     double eval(const Position &pos, const int depth);
     double pos_score(const Position &pos, Color cur_color);
 
@@ -111,13 +112,15 @@ private:
     void store_choice(uint64_t key, Move mv);
     Move check_previous_choice(uint64_t key);
 
+    double qsearch(Position &pos, double alpha, double beta);
+
     bool time_out_ = false;
     int node_count_ = 0;
     int no_eat_flip = 0;
     int ply_count_ = 0;// total ply count in the game
     int prev_total_count = SQUARE_NB;
     std::chrono::time_point<std::chrono::steady_clock> start_time_{};
-    int time_limit_ms_ = 4500;
+    int time_limit_ms_ = 5000;
     TranspositionTable tt_;
     ZobristHash zobrist_;
 

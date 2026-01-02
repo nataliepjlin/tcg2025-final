@@ -78,15 +78,9 @@ void AlphaBetaEngine::update_unrevealed(const Position &pos){
 
 double AlphaBetaEngine::eval(const Position &pos, const int depth){
     if(pos.winner() != NO_COLOR){
-        if(pos.winner() == pos.due_up()){
-            return std::min(1.0, 0.98 + (0.001 * depth));
-        }
-        else if(pos.winner() == Mystery){// opponent wins
-            return 0.2;
-        }
-        else{
-            return std::max(0.0, 0.02 - (0.001 * depth));
-        }
+        if(pos.winner() == pos.due_up()) return AB_WIN_SCORE + depth;
+        else if(pos.winner() == Mystery) return 0; 
+        else return -(AB_WIN_SCORE + depth);
     }
     return pos_score(pos, pos.due_up());
 }
@@ -118,7 +112,7 @@ double AlphaBetaEngine::star1(const Move &mv, const Position &pos, double alpha,
             double search_alpha = std::max(V_MIN, std::min(A, V_MAX));
             double search_beta = std::max(V_MIN, std::min(B, V_MAX));
 
-            long double t = -f3(copy, -search_beta, -search_alpha, depth, child_key, dummy_ref, Move(), flip_budget - 1, 0);
+            long double t = -f4(copy, -search_beta, -search_alpha, depth, child_key, dummy_ref, Move(), flip_budget - 1, 0);
             unrevealed_count[c][pt]++;
 
             if(t > V_MAX) t = V_MAX;
@@ -153,12 +147,11 @@ double AlphaBetaEngine::try_move(const Position &pos, const Move &mv, double alp
         Position copy(pos);
         copy.do_move(mv);
         uint64_t child_key = zobrist_.update_zobrist_hash(key, mv, pos, Piece());
-        return -f3(copy, -beta, -alpha, depth - 1, child_key, dummy_ref, Move(), flip_budget, cooldown+1);
+        return -f4(copy, -beta, -alpha, depth - 1, child_key, dummy_ref, Move(), flip_budget, cooldown+1);
     }
 }
 
-
-double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint, int flip_budget, int cooldown){
+double AlphaBetaEngine::f4(Position &pos, double alpha, double beta, int depth, uint64_t key, Move &best_move_ref, const Move pv_hint, int flip_budget, int cooldown){
     if((++node_count_ & 255) == 0){
         auto now = std::chrono::steady_clock::now();
         if(std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time_).count() > time_limit_ms_){
@@ -176,16 +169,8 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
     }
 
     // Terminal check
-    if(pos.winner() != NO_COLOR){
-        int diff = pos_score(pos, pos.due_up());
-        if(pos.winner() == pos.due_up()) return AB_WIN_SCORE + depth;
-        else if(pos.winner() == Mystery) return 0; 
-        else return -(AB_WIN_SCORE + depth);
-    }
-
-    // Depth Cutoff
-    if(depth == 0) {
-        return pos_score(pos, pos.due_up());
+    if(pos.winner() != NO_COLOR || depth <= 0){
+        return eval(pos, depth);
     }
 
     Move sort_move = (pv_hint != Move()) ? pv_hint : tt_move;
@@ -200,13 +185,10 @@ double AlphaBetaEngine::f3(Position &pos, double alpha, double beta, int depth, 
 
     Move dummy_ref;
 
-    MoveList<Moving>non_flip_moves(pos);
-    bool can_flip = (non_flip_moves.size() == 0 || (flip_budget > 0 && cooldown >= FLIP_COOLDOWN_REQ && depth >= MIN_DEPTH_FOR_FLIP));
+    // MoveList<Moving>non_flip_moves(pos);
+    // bool can_flip = (non_flip_moves.size() == 0 || (flip_budget > 0 && cooldown >= FLIP_COOLDOWN_REQ && depth >= MIN_DEPTH_FOR_FLIP));
 
     for(int i = 0; i < moves.size(); i++){
-        if(moves[i].mv.type() == Flipping && !can_flip){
-            continue;
-        }
 
         double upper_bound = (moves[i].mv.type() == Flipping) ? beta : n;
         double t = try_move(pos, moves[i].mv, std::max(alpha, m), upper_bound, depth, key, dummy_ref, flip_budget, cooldown);
@@ -359,6 +341,31 @@ Move AlphaBetaEngine::search(Position &pos){
     }
     this->ply_count_++;
     update_unrevealed(pos);// may be eaten by opponent in last turn
+    if(pos.count(Hidden) == SQUARE_NB - 1){// Return the farthest flip immediately
+        BoardView opp_view(pos.pieces(Color(pos.due_up() ^ 1)));
+        
+        if(opp_view.begin() != opp_view.end()){
+            Square opp_flip_sq = *opp_view.begin();
+            
+            Move best_dodge_flip = Move();
+            int max_dist = -1;
+
+            for(int s = 0; s < SQUARE_NB; ++s){
+                Square sq = Square(s);
+                if(pos.peek_piece_at(sq).type == Hidden){
+                    int d = SquareDistance[opp_flip_sq][sq];
+                    
+                    if(d > max_dist){
+                        max_dist = d;
+                        best_dodge_flip = Move(sq, sq);
+                    }
+                }
+            }
+            if(best_dodge_flip != Move()){
+                return best_dodge_flip;
+            }
+        }
+    }
 
     Move best_move_root = Move();
     uint64_t key = zobrist_.compute_zobrist_hash(pos);
@@ -379,7 +386,7 @@ Move AlphaBetaEngine::search(Position &pos){
         
         Move best_move_this_iter = Move();
         
-        f3(pos, -INF, INF, depth, key, best_move_this_iter, best_move_root);
+        f4(pos, -INF, INF, depth, key, best_move_this_iter, best_move_root);
         
         if(time_out_){
             if(best_move_this_iter != Move()){
@@ -407,30 +414,12 @@ int AlphaBetaEngine::get_material_index(const Position &pos, Color c) const{
 }
 
 double AlphaBetaEngine::pos_score(const Position &pos, const Color cur_color){
-    double score = 0;
+    int my_mat_idx = get_material_index(pos, cur_color);
+    int opp_mat_idx = get_material_index(pos, Color(cur_color ^ 1));
+
+    double score = material_table[my_mat_idx][opp_mat_idx];
+
     Color opp_color = Color(cur_color ^ 1);
-
-    int red_pawns = pos.count(Red, Soldier) + unrevealed_count[Red][Soldier];
-    int black_pawns = pos.count(Black, Soldier) + unrevealed_count[Black][Soldier];
-    // safety clamp
-    red_pawns = std::min(red_pawns, 5);
-    black_pawns = std::min(black_pawns, 5);
-    double red_gen_bonus = 0;
-    double black_gen_bonus = 0;
-    
-    for(Square sq = SQ_A1; sq < SQUARE_NB; sq = Square(sq + 1)){
-        Piece p = pos.peek_piece_at(sq);
-        if(p.type == General){
-            score += (p.side == Red) ? red_gen_bonus : black_gen_bonus;
-        }
-        if(p.side == cur_color){
-            score += Piece_Value[p.type];
-        }
-        else if(p.side == opp_color){
-            score -= Piece_Value[p.type];
-        }
-    }
-
     Board my_board = pos.pieces(cur_color);
     Board opp_board = pos.pieces(opp_color);
     if(pos.count(cur_color) && pos.count(opp_color)){
