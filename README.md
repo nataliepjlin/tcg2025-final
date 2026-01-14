@@ -1,3 +1,6 @@
+## Demo Videos
+- [Play against my classmate's agent](https://youtu.be/p3ERipeTgEA)
+- [Play against baseline agent](https://youtu.be/5hds3gieOu0)
 ## Usage of Wakasagihime AlphaBeta Engine
 `make` at `wakasagihime` directory to compile the engine, then run `./wakasagi` to start the engine.
 ## Usage of precompiled material score
