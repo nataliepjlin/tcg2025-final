@@ -1,3 +1,5 @@
+## About
+A Chinese Dark Chess game agent. Implementation explanations can be found at `TCG-final-Report.pdf`, while requirements are at `final.pdf`.
 ## Demo Videos
 - [Play against my classmate's agent](https://youtu.be/p3ERipeTgEA)
 - [Play against baseline agent](https://youtu.be/5hds3gieOu0)
